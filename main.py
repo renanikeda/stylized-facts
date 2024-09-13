@@ -1,4 +1,5 @@
 ## Imports
+import math
 import itertools
 import datetime as dt
 import pandas as pd
@@ -24,7 +25,11 @@ today = dt.date.today().strftime('%Y-%m-%d')
 start = '2015-01-01'
 
 def get_none_index (l):
-    return l.index(None)
+    try:
+        return l.index(None)
+    except:
+        l.append(None)
+        return len(l) - 1
 
 ## Definindo as séries
 spx_ticker = yf.Ticker("^SPX")
@@ -55,7 +60,7 @@ plt.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, h
 plt.xticks(rotation=45, ha='right')
 plt.xlim([df_ibov.index[0], df_ibov.index[-1]]) 
 plt.tight_layout()
-plt.show()
+# plt.show()
 
 ## Defining Returns
 returns = { 'IBOV': {}, 'SPX': {} }
@@ -80,7 +85,7 @@ for (index_asset, asset) in enumerate(returns):
         ax.set_title('')
 
 plt.tight_layout()
-plt.show()
+# plt.show()
 
 ## Calculando a Curtose
 for asset in df_total:
@@ -117,7 +122,7 @@ for (index_asset, asset) in enumerate(returns):
 
         plt.tight_layout()
 
-plt.show()
+# plt.show()
 
 ## Intermitência
 for asset in returns:
@@ -158,7 +163,7 @@ for asset in returns:
         plt.ylabel(f'{asset} volatilidade {period}')
         ax.legend(['Volatilidade'])
     plt.tight_layout()
-plt.show()
+#plt.show()
 
 ##Agrupamento de Volatilidade
 total_index = get_none_index(fig)
@@ -172,7 +177,7 @@ for (index_asset, asset) in enumerate(returns):
         plt.ylim([-0.25, 1.1])
         plt.title(f'Autocorrelação {asset}')
     plt.tight_layout()
-plt.show()
+#plt.show()
 
 ## Decaimento por lei de potencias do retorno absoluto
 power_law = lambda x, a, b: a / np.power(x, b)
