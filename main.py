@@ -204,4 +204,48 @@ for (index_asset, asset) in enumerate(returns):
         plt.ylim([-0.25, 1.01])
         plt.title(f'Autocorrelação {asset}')
     plt.tight_layout()
+
+
+## Efeito Alavancagem
+for (index_asset, asset) in enumerate(returns):
+    period = 'diário'
+    total_index = get_none_index(fig)
+    fig[total_index] = plt.figure(figsize=(10, 5))
+    ax = fig[total_index].add_subplot(int(f'211'))
+    std_returns = standard_deviation(returns[asset][period], window = 15)
+    std_returns.plot(figsize=(10, 7), color=colors_asset[asset], linestyle='-', ax=ax)
+    plt.legend(fontsize="10")
+    plt.xticks(rotation=45, ha='right')
+    plt.xlim([returns[asset][period].index[0], returns[asset][period].index[-1]]);
+    plt.ylabel(f'{asset} volatilidade {period}')
+    ax.legend(['Volatilidade'])
+
+    ax = fig[total_index].add_subplot(int(f'212'))
+    # df_total[asset].plot(figsize=(10, 7), color=colors_asset[asset], linestyle='-', ax=ax)
+    df_total[asset].plot(figsize=(10, 7), color=colors_asset[asset], linestyle='-', ax=ax)
+    plt.xlim([returns[asset][period].index[0], returns[asset][period].index[-1]]);
+    plt.ylabel(f'{asset} valor {period}')
+    ax.legend(['Fechamento'])
+    plt.tight_layout()
+
+for (index_asset, asset) in enumerate(returns):
+    total_index = get_none_index(fig)
+    fig[total_index] = plt.figure(figsize=(10, 5))
+    ax = fig[total_index].add_subplot(111)
+    period = 'diário'
+    lags = 50
+    std_returns = standard_deviation(returns[asset][period], window = 15)
+    sm.graphics.tsa.plot_ccf(x=df_total[asset], y=std_returns, lags=lags, alpha=0.05, color=colors_asset[asset], ax = ax)
+    plt.xlabel('lags')
+    plt.ylabel(f'Correlação Cruzada {asset} variância e fechamento {period.title()}')
+    plt.ylim([-0.75, 1.01])
+    plt.xlim([-0.25, lags - 1])
+    plt.title(f'Correlação Cruzada {asset}')
+
+
+    total_index = get_none_index(fig)
+    fig[total_index] = plt.figure(figsize=(10, 5))
+    sns.regplot(x=std_returns, y=returns[asset][period][:-14])
+
+
 plt.show()
