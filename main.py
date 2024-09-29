@@ -4,7 +4,7 @@ import itertools
 import datetime as dt
 import pandas as pd
 import numpy as np
-from scipy.stats import norm
+from scipy.stats import norm, pearsonr
 from scipy.stats import skew, kurtosis
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
@@ -40,8 +40,14 @@ df_spx = spx_ticker.history(start=start, end=today)['Close']
 df_spx.index = pd.to_datetime(df_spx.index.date, format='%Y-%m-%d')
 df_total = { 'IBOV': df_ibov, 'SPX': df_spx }
 
-fig = [None]*10
-axs = [None]*10
+volume_ibov = ibov_ticker.history(start=start, end=today)['Volume']
+volume_ibov.index = pd.to_datetime(volume_ibov.index.date, format='%Y-%m-%d')
+volume_spx = spx_ticker.history(start=start, end=today)['Volume']
+volume_spx.index = pd.to_datetime(volume_spx.index.date, format='%Y-%m-%d')
+
+volume_total = { 'IBOV': volume_ibov, 'SPX': volume_spx }
+fig = [None]
+axs = [None]
 
 ## Asset indexes
 fig[0], axs[0] = plt.subplots(2)
@@ -71,7 +77,7 @@ for asset in df_total:
 
 ## Autocorrelation Returns
 for (index_asset, asset) in enumerate(returns):
-    total_index = 1 + index_asset
+    total_index = get_none_index(fig)
     fig[total_index] = plt.figure(figsize=(10, 5))
     for (index, period) in enumerate(returns[asset]):
         lags = 20
@@ -101,7 +107,7 @@ for asset in df_total:
 
 ## Agregação Gaussiana
 for (index_asset, asset) in enumerate(returns):
-    total_index = 3 + index_asset
+    total_index = get_none_index(fig)
     fig[total_index] = plt.figure(figsize=(10, 7))
     for (index_period, period) in enumerate(returns[asset]):
         ax = fig[total_index].add_subplot(int(f'23{index_period + 1}'))
@@ -141,15 +147,14 @@ for asset in returns:
 
 def standard_deviation(log_return, window=30, trading_periods=252, clean=True):
 
-    result = log_return.rolling(window=window, center=False).std() * math.sqrt(
-        trading_periods
-    )
+    # result = log_return.rolling(window=window, center=False).std() * math.sqrt(trading_periods)
+    result = log_return.rolling(window=window, center=False).std() * math.sqrt(trading_periods)
 
     if clean:
         return result.dropna()
     else:
-        return result
-    
+        return result.fillna(result.iloc[window-1])
+
 for asset in returns:
     total_index = get_none_index(fig)
     fig[total_index] = plt.figure(figsize=(10, 5))
@@ -204,15 +209,20 @@ for (index_asset, asset) in enumerate(returns):
         plt.ylim([-0.25, 1.01])
         plt.title(f'Autocorrelação {asset}')
     plt.tight_layout()
-
+print('\n')
 
 ## Efeito Alavancagem
+def annotate(data, **kws):
+    r, p = pearsonr(data['x'], data['y'])
+    ax = plt.gca()
+    ax.text(.05, .8, 'r={:.2f}, p={:.2g}'.format(r, p),
+            transform=ax.transAxes)
 for (index_asset, asset) in enumerate(returns):
     period = 'diário'
     total_index = get_none_index(fig)
     fig[total_index] = plt.figure(figsize=(10, 5))
     ax = fig[total_index].add_subplot(int(f'211'))
-    std_returns = standard_deviation(returns[asset][period], window = 15)
+    std_returns = standard_deviation(returns[asset][period], window = 10)
     std_returns.plot(figsize=(10, 7), color=colors_asset[asset], linestyle='-', ax=ax)
     plt.legend(fontsize="10")
     plt.xticks(rotation=45, ha='right')
@@ -230,22 +240,102 @@ for (index_asset, asset) in enumerate(returns):
 
 for (index_asset, asset) in enumerate(returns):
     total_index = get_none_index(fig)
-    fig[total_index] = plt.figure(figsize=(10, 5))
-    ax = fig[total_index].add_subplot(111)
-    period = 'diário'
-    lags = 50
-    std_returns = standard_deviation(returns[asset][period], window = 15)
-    sm.graphics.tsa.plot_ccf(x=df_total[asset], y=std_returns, lags=lags, alpha=0.05, color=colors_asset[asset], ax = ax)
-    plt.xlabel('lags')
-    plt.ylabel(f'Correlação Cruzada {asset} variância e fechamento {period.title()}')
-    plt.ylim([-0.75, 1.01])
-    plt.xlim([-0.25, lags - 1])
-    plt.title(f'Correlação Cruzada {asset}')
+    fig[total_index] = plt.figure(figsize=(7, 10))
+    window = 15
+    for (index_period, period) in enumerate(returns[asset]):
+        ax = fig[total_index].add_subplot(int(f'31{index_period + 1}'))
+        std_returns = standard_deviation(returns[asset][period], window = window, clean=False)
+        std_returns = std_returns.diff().dropna() if period == 'diário' else std_returns.resample('W').last().diff().dropna() if period == 'semanal' else std_returns.resample('ME').last().diff().dropna()
+        sns.regplot(x=std_returns, y=returns[asset][period].shift(1)[1:], color=colors_asset[asset], ax=ax)
+        # data = pd.concat([std_returns.diff().dropna(), returns[asset][period].shift(1)], axis=1)
+        # data = data.set_axis(['x', 'y'], axis=1).dropna()
+        # g = sns.lmplot(x='x', y='y', data=data)
+        # g.map_dataframe(annotate)
+        plt.ylabel(f'{asset} retorno {period}')
+        plt.xlabel(f'{asset} volatilidade {period}')
+        print(f"Correlação entre a Volatilidade e o retorno do {asset}: ", std_returns.diff().dropna().corr(returns[asset][period].shift(1)[1:]))
+    plt.tight_layout()
+print('\n')
 
-
+Correlação entre volume e volatilidade
+for (index_asset, asset) in enumerate(returns):
     total_index = get_none_index(fig)
-    fig[total_index] = plt.figure(figsize=(10, 5))
-    sns.regplot(x=std_returns, y=returns[asset][period][:-14])
+    fig[total_index] = plt.figure(figsize=(14, 6))
+    window = 30
+    for (index_period, period) in enumerate(returns[asset]):
+        ax = fig[total_index].add_subplot(int(f'31{index_period + 1}'))
+        normalized_volume = (volume_total[asset] - volume_total[asset].mean()) / volume_total[asset].std() 
+        normalized_volume = normalized_volume.diff().dropna() if period == 'diário' else normalized_volume.resample('W').last().diff().dropna() if period == 'semanal' else normalized_volume.resample('ME').last().diff().dropna()
+        normalized_volume.plot(color=colors_asset[asset], linestyle='-', ax=ax)
+
+        std_returns = standard_deviation(returns[asset][period], window = window, clean=False)
+        std_returns = std_returns.diff().dropna() if period == 'diário' else std_returns.resample('W').last().diff().dropna() if period == 'semanal' else std_returns.resample('ME').last().diff().dropna()
+        normalize_std_returns = (std_returns - std_returns.mean()) / std_returns.std() 
+        normalize_std_returns.plot(color=colors_asset[asset], linestyle='-', ax=ax)
+        plt.xlim([normalized_volume.index[0], normalized_volume.index[-1]])
+    plt.tight_layout()
+
+for (index_asset, asset) in enumerate(returns):
+    total_index = get_none_index(fig)
+    fig[total_index] = plt.figure(figsize=(7, 10))
+    window = 15
+    for (index_period, period) in enumerate(returns[asset]):
+        ax = fig[total_index].add_subplot(int(f'31{index_period + 1}'))
+        normalized_volume = (volume_total[asset] - volume_total[asset].mean()) / volume_total[asset].std() 
+        normalized_volume = normalized_volume.diff().dropna() if period == 'diário' else normalized_volume.resample('W').last().diff().dropna() if period == 'semanal' else normalized_volume.resample('ME').last().diff().dropna()
+
+        std_returns = standard_deviation(returns[asset][period], window = window, clean=False)
+        std_returns = std_returns.diff().dropna() if period == 'diário' else std_returns.resample('W').last().diff().dropna() if period == 'semanal' else std_returns.resample('ME').last().diff().dropna()
+
+        normalize_std_returns = (std_returns - std_returns.mean()) / std_returns.std() 
+        sns.regplot(x=normalize_std_returns, y=normalized_volume[1:], color=colors_asset[asset], ax=ax)
+        plt.ylabel(f'{asset} volume {period}')
+        plt.xlabel(f'{asset} retorno {period}')
+        print(f"Correlação entre a Volatilidade e o volume de negociação do {asset}: ", normalize_std_returns.diff().dropna().corr(normalized_volume[1:]))
+    plt.tight_layout()
+
+# print(yf.Ticker("^BVSPVIX").info)
+# print(yf.Ticker("^BVSPVIX").history(start=start, end=today, period='1d'))
+
+# asset = 'SPX'
+# total_index = get_none_index(fig)
+# fig[total_index] = plt.figure(figsize=(7, 10))
+# window = 15
+# for (index_period, period) in enumerate(returns[asset]):
+#     ax = fig[total_index].add_subplot(int(f'31{index_period + 1}'))
+#     normalized_volume = (volume_total[asset] - volume_total[asset].mean()) / volume_total[asset].std() 
+#     normalized_volume = normalized_volume.diff().dropna() if period == 'diário' else normalized_volume.resample('W').last().diff().dropna() if period == 'semanal' else normalized_volume.resample('ME').last().diff().dropna()
+
+#     vix_ticker = yf.Ticker("^VIX")
+#     vix_data = vix_ticker.history(start=start, end=today)['Close']
+#     vix_data.index = pd.to_datetime(vix_data.index.date, format='%Y-%m-%d')
+#     std_returns = vix_data.diff().dropna() if period == 'diário' else vix_data.resample('W').last().diff().dropna() if period == 'semanal' else vix_data.resample('ME').last().diff().dropna()
+
+#     normalize_std_returns = (std_returns - std_returns.mean()) / std_returns.std() 
+#     sns.regplot(x=normalize_std_returns, y=normalized_volume, color=colors_asset[asset], ax=ax)
+#     plt.ylabel(f'{asset} volume {period}')
+#     plt.xlabel(f'{asset} retorno {period}')
+#     print(f"Correlação entre a Volatilidade e o volume de negociação do {asset}: ", normalize_std_returns.diff().dropna().corr(normalized_volume))
+# plt.tight_layout()
 
 
+# asset = 'SPX'
+# total_index = get_none_index(fig)
+# fig[total_index] = plt.figure(figsize=(7, 10))
+# window = 15
+# for (index_period, period) in enumerate(returns[asset]):
+#     ax = fig[total_index].add_subplot(int(f'31{index_period + 1}'))
+#     normalized_volume = (volume_total[asset] - volume_total[asset].mean()) / volume_total[asset].std() 
+#     normalized_volume = normalized_volume.diff().dropna() if period == 'diário' else normalized_volume.resample('W').last().diff().dropna() if period == 'semanal' else normalized_volume.resample('ME').last().diff().dropna()
+    
+#     std_returns = standard_deviation(returns[asset][period], window = window, clean=False)
+#     std_returns = std_returns.diff().dropna() if period == 'diário' else std_returns.resample('W').last().diff().dropna() if period == 'semanal' else std_returns.resample('ME').last().diff().dropna()
+
+#     normalize_std_returns = (std_returns - std_returns.mean()) / std_returns.std() 
+#     sns.regplot(x=normalize_std_returns, y=normalized_volume[1:], color=colors_asset[asset], ax=ax)
+#     plt.ylabel(f'{asset} volume {period}')
+#     plt.xlabel(f'{asset} retorno {period}')
+#     print(f"Correlação entre a Volatilidade e o volume de negociação do {asset}: ", normalize_std_returns.diff().dropna().corr(normalized_volume))
+# plt.tight_layout()
 plt.show()
+
