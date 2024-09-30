@@ -12,6 +12,7 @@ import seaborn as sns
 import statsmodels.api as sm
 from statsmodels.graphics.gofplots import qqplot
 import yfinance as yf
+from arch import arch_model
 
 ## Definições de plot
 color_dark_blue = 'darkslategrey'
@@ -183,6 +184,46 @@ for (index_asset, asset) in enumerate(returns):
         plt.title(f'Autocorrelação {asset}')
     plt.tight_layout()
 #plt.show()
+
+## Condicionamento da cauda pesada
+for (index_asset, asset) in enumerate(returns):
+    total_index = get_none_index(fig)
+    fig[total_index] = plt.figure(figsize=(10, 5))
+    for (index_period, period) in enumerate(returns[asset]):
+        garch = arch_model(100*returns[asset][period], vol='GARCH', p=1, q=1, dist='gaussian')
+        returns_res_fit = garch.fit(update_freq=0, disp="off")
+        returns_std_resid = pd.Series(returns_res_fit.resid / returns_res_fit.conditional_volatility)
+
+        ax = fig[total_index].add_subplot(int(f'13{index_period + 1}'))
+        sm.graphics.tsa.plot_acf(returns_std_resid, lags=20, ax=ax, alpha=0.05, color=colors_asset[asset])
+        plt.xlabel('lags')
+        plt.ylabel(f'AC {asset} Retorno GARCH {period.title()}')
+
+for (index_asset, asset) in enumerate(returns):
+    total_index = get_none_index(fig)
+    fig[total_index] = plt.figure(figsize=(10, 7))
+    for (index_period, period) in enumerate(returns[asset]):
+        ax = fig[total_index].add_subplot(int(f'23{index_period + 1}'))
+        garch = arch_model(100*returns[asset][period], vol='GARCH', p=1, q=1, dist='gaussian')
+        returns_res_fit = garch.fit(update_freq=0, disp="off")
+        returns_std_resid = pd.Series(returns_res_fit.resid / returns_res_fit.conditional_volatility)
+
+        sns.histplot(returns_std_resid, bins=50, color=colors_asset[asset], stat='density', ax=ax)
+        xmin, xmax = plt.xlim()
+        x = np.linspace(xmin, xmax, 100)
+        p = norm.pdf(x, np.mean(returns_std_resid), np.std(returns_std_resid))
+        plt.plot(x, p, color='r', linestyle='dashed', linewidth=3, label='Gaussian')
+        plt.xlabel(f'{asset} retorno GARCH {period}')
+        plt.ylabel('Frequência')
+        plt.legend()
+
+        ax = fig[total_index].add_subplot(int(f'23{index_period + 1 + 3}'))
+        qq = qqplot(returns_std_resid, line='s', ax=ax, markerfacecolor=colors_asset[asset], fit=True)
+        plt.xlabel('Quantil Teórico')
+        plt.ylabel('Quantil Amostral')
+        plt.xlim([-4,4]);
+
+        plt.tight_layout()
 
 ## Decaimento por lei de potencias do retorno absoluto
 power_law = lambda x, a, b: a / np.power(x, b)
